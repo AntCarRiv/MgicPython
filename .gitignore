@@ -153,4 +153,3 @@ pdfTableToDataframe
 send_mail
 tools_lambda
 toolsAWS
-*.pyi

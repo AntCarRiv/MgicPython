@@ -1,6 +1,6 @@
 import json
 import traceback
-from typing import TypeVar, Optional, Mapping
+from typing import TypeVar, Optional, Mapping, overload
 
 import firebase_admin
 from firebase_admin import credentials
@@ -17,7 +17,6 @@ _T_co = TypeVar('_T_co', covariant=True)  # Any type covariant containers.
 _V_co = TypeVar('_V_co', covariant=True)  # Any type covariant containers.
 _KT_co = TypeVar('_KT_co', covariant=True)  # Key type covariant containers.
 _VT_co = TypeVar('_VT_co', covariant=True)  # Value type covariant containers.
-
 
 __OPTIONS = __PARAMS.get('options')
 __KEYS_REALTIME = __PARAMS.get('keys_realtime')
@@ -94,28 +93,29 @@ class ArcarDict(dict):
             self.instace_firebase.REF = self.__ref
 
     def __getitem__(self, item):
-        print('get_item', FirebaseBase.REF)
-        d = dict.__getitem__(self, item)
-        if isinstance(d, dict):
-            return ArcarDict(d, self.__ref + '/' + item)
+        _d = dict.__getitem__(self, item)
+        if isinstance(_d, dict):
+            return ArcarDict(_d, self.__ref + '/' + item)
         else:
-            return d
+            return _d
 
     def __setitem__(self, key, value):
-        print('set_item ', FirebaseBase.REF)
         try:
             self.instace_firebase.update_fb({key: value})
         except Exception as details:
+            print(details)
             traceback.print_exc()
             return self
         else:
-            return dict.__setitem__(self, key, value)
+            return ArcarDict(dict.__setitem__(self, key, value), self.__ref)
 
     def __delitem__(self, key):
-        return dict.__delitem__(self, key)
+        return ArcarDict(dict.__delitem__(self, key), self.__ref)
 
     def get(self, k: _KT) -> Optional[_VT_co]:
-        return dict.get(self, k)
+        _d = dict.get(self, k)
+
+        return
 
     def setdefault(self, k: _KT, default: _VT = ...) -> _VT:
         pass
@@ -131,14 +131,17 @@ class ArcarDict(dict):
             d = self
         return d
 
-    def to_json(self):
+    def to_json(self, name_file: str = None):
         try:
-            j = json.dumps(self)
+            if name_file:
+                with open(name_file, 'w', encoding='utf-8') as file:
+                    json.dump(self, file)
+            else:
+                j = json.dumps(self)
+                return j
         except Exception as details:
             print(details)
             traceback.print_exc()
-        else:
-            return j
 
 
 class M2(FirebaseBase):
@@ -155,12 +158,3 @@ class Output(FirebaseBase):
 
 def compare_iters(is_this, in_this):
     return all(list(map(lambda x, y: x in y, is_this, [in_this] * len(is_this))))
-
-
-# m2 = Output.get_node('0')
-# m3 = m2['clientContractData']
-# m2['clientContractData']['itemHeredado'] = 'si sirve mas chido'
-# m3['otro_item'] = 'a nu ma'
-m2 = ArcarDict()
-m2.update(a=1)
-print(m2)
