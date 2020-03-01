@@ -1,23 +1,15 @@
 import json
 import traceback
-from typing import TypeVar, Optional, Mapping, overload
+import warnings
 
 import firebase_admin
 from firebase_admin import credentials
 from firebase_admin import db as firebase_db
 
 # These type variables are used by the container types.
+import tools_lambda
 
-
-_T = TypeVar('_T')
-_S = TypeVar('_S')
-_KT = TypeVar('_KT')  # Key type.
-_VT = TypeVar('_VT')  # Value type.
-_T_co = TypeVar('_T_co', covariant=True)  # Any type covariant containers.
-_V_co = TypeVar('_V_co', covariant=True)  # Any type covariant containers.
-_KT_co = TypeVar('_KT_co', covariant=True)  # Key type covariant containers.
-_VT_co = TypeVar('_VT_co', covariant=True)  # Value type covariant containers.
-
+__PARAMS = tools_lambda.get_params("firebase_realtime")
 __OPTIONS = __PARAMS.get('options')
 __KEYS_REALTIME = __PARAMS.get('keys_realtime')
 __BUCKET_NAME = __PARAMS.get('storageBucket')
@@ -52,8 +44,12 @@ class FirebaseBase:
         cls.__get_ref().update(data)
 
     @classmethod
-    def delete_fb(cls, data):
-        pass
+    def delete_fb(cls):
+        try:
+            cls.__get_ref().delete()
+        except Exception as details:
+            print(details)
+            traceback.print_exc()
 
     @classmethod
     def get_node(cls, node):
@@ -87,21 +83,21 @@ class ArcarDict(dict):
         if not firebase_json:
             firebase_json = self
         super().__init__(firebase_json)
-        self.instace_firebase = FirebaseBase
+        self.__instance_firebase = FirebaseBase
         self.__ref = _ref
         if _ref:
-            self.instace_firebase.REF = self.__ref
+            self.__instance_firebase.REF = self.__ref
 
     def __getitem__(self, item):
         _d = dict.__getitem__(self, item)
         if isinstance(_d, dict):
-            return ArcarDict(_d, self.__ref + '/' + item)
+            return ArcarDict(_d, f'{self.__ref}/{item}')
         else:
             return _d
 
     def __setitem__(self, key, value):
         try:
-            self.instace_firebase.update_fb({key: value})
+            self.__instance_firebase.update_fb({key: value})
         except Exception as details:
             print(details)
             traceback.print_exc()
@@ -110,26 +106,36 @@ class ArcarDict(dict):
             return ArcarDict(dict.__setitem__(self, key, value), self.__ref)
 
     def __delitem__(self, key):
-        return ArcarDict(dict.__delitem__(self, key), self.__ref)
-
-    def get(self, k: _KT) -> Optional[_VT_co]:
-        _d = dict.get(self, k)
-
-        return
-
-    def setdefault(self, k: _KT, default: _VT = ...) -> _VT:
-        pass
-
-    def update(self, __m: Mapping[_KT, _VT] = None, **kwargs: _VT) -> None:
-        print("m", __m)
-        print("kw", kwargs)
-        if __m:
-            d = dict.update(self, __m, **kwargs)
-        elif kwargs:
-            d = dict.update(self, **kwargs)
+        try:
+            r = self.instance_firebase.REF
+            self.instance_firebase.REF += f'/{key}'
+            self.instance_firebase.delete_fb()
+            self.instance_firebase.REF = r
+        except Exception as details:
+            print(details)
+            traceback.print_exc()
         else:
-            d = self
-        return d
+            dict.__delitem__(self, key)
+        return self
+
+    def get(self, k):
+        _d = dict.get(self, k)
+        if isinstance(_d, dict):
+            _d = ArcarDict(_d, self.__ref)
+        return _d
+
+    def setdefault(self, k, default):
+        if k not in self:
+            try:
+                self.__setitem__(k, default)
+            except Exception as details:
+                print(details)
+                traceback.print_exc()
+            else:
+                return default
+
+    def update(self, __m=None, **kwargs) -> None:
+        pass
 
     def to_json(self, name_file: str = None):
         try:
@@ -142,19 +148,3 @@ class ArcarDict(dict):
         except Exception as details:
             print(details)
             traceback.print_exc()
-
-
-class M2(FirebaseBase):
-    REF = 'm2'
-
-
-class ProcessEngine(FirebaseBase):
-    REF = 'm2/process-engine'
-
-
-class Output(FirebaseBase):
-    REF = 'm2/process-engine/output'
-
-
-def compare_iters(is_this, in_this):
-    return all(list(map(lambda x, y: x in y, is_this, [in_this] * len(is_this))))
