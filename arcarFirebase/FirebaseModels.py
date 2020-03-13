@@ -107,10 +107,10 @@ class ArcarDict(dict):
 
     def __delitem__(self, key):
         try:
-            r = self.instance_firebase.REF
-            self.instance_firebase.REF += f'/{key}'
-            self.instance_firebase.delete_fb()
-            self.instance_firebase.REF = r
+            r = self.__instance_firebase.REF
+            self.__instance_firebase.REF += f'/{key}'
+            self.__instance_firebase.delete_fb()
+            self.__instance_firebase.REF = r
         except Exception as details:
             print(details)
             traceback.print_exc()
