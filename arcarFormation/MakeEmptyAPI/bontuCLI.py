@@ -39,9 +39,10 @@ PARSER.add_argument("-w", "--work_path", type=str,
                     help="Defina la ubicacion de su proyecto de lambbdas")
 PARSER.add_argument("--config", action="store_true",
                     help="Imprime la informacion de configuracion")
-
-PARSER.add_argument("--valid_templates", type=str,
+PARSER.add_argument("--valid-templates", type=str,
                     help="Imprime los nombres de los templates validos para añadir lambdas")
+PARSER.add_argument("--add-templates", type=str,
+                    help="Añade un nombre de template valido")
 
 PARSER.add_argument("--deploy", action='store_true',
                     help="Crea los templates respectivos con la configuracion establecida")
@@ -125,4 +126,8 @@ if args.deploy:
 if args.list_profiles:
     CONFIG.read(PATH_CONFIG)
     print(list(CONFIG.keys()))
+    exit(0)
+
+if args.add_template:
+    print(args.add_template)
     exit(0)

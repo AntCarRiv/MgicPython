@@ -61,7 +61,7 @@ def make_dir_lambda(path):
 
 
 def validation_name(name: str) -> Optional[str]:
-    LOGGER.info("Name validation")
+    LOGGER.debug("Name validation")
     if name[0] == '.':
         return None
     if name[0] == '/':
@@ -74,13 +74,13 @@ def new_lambda(name: str, template: str = None, path: str = None) -> bool:
     try:
         name_system = name
         path_system = os.path.join(path.replace('/', os.sep), name.replace('/', os.sep))
-        LOGGER.info(
+        LOGGER.debug(
             f'\nPath: {path.replace("/", os.sep)}\nName: {name.replace("/", os.sep)}\nTemplate: {template}\npath_system: {path_system}')
         name = validation_name(name)
         if not name:
             print('Not define relative path in the name lambda')
             return False
-        LOGGER.info('Name ok')
+        LOGGER.debug('Name ok')
         if not os.path.exists(path_system):
             make_dir_lambda(path_system)
 
@@ -116,7 +116,6 @@ def deploy(path):
             LOGGER.error(
                 f'The limit for templates is 200 resource but this template contain {template_length} resources')
         for dd in groups[template]:
-            print(template, dd['function_config'])
             t_lambda = deepcopy(t.template_properties_lambda_default)
             t_lambda.update(dd.get('function_config'))
             lp = aws_resources.LambdaProperties(**t_lambda)
