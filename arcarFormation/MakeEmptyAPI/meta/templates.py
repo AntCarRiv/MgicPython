@@ -106,139 +106,8 @@ master_template = {}
 
 api_cloud_formation_template = {}
 
-method_template = {
-    "post": {
-        "consumes": [
-            "application/json"
-        ],
-        "produces": [
-            "application/json"
-        ],
-        "parameters": [
-            {
-                "in": "body",
-                "name": "Empty",
-                "required": True,
-                "schema": {
-                    "$ref": "#/definitions/Empty"
-                }
-            }
-        ],
-        "responses": {
-            "200": {
-                "description": "200 response",
-                "schema": {
-                    "$ref": "#/definitions/Empty"
-                },
-                "headers": {
-                    "Access-Control-Allow-Origin": {
-                        "type": "string"
-                    },
-                    "Access-Control-Allow-Methods": {
-                        "type": "string"
-                    },
-                    "Access-Control-Allow-Headers": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "security": [
-            {
-                "auth_users": []
-            },
-            {
-                "api_key": []
-            }
-        ],
-        "x-amazon-apigateway-integration": {
-            "uri": {
-                "Fn::Join": [
-                    "",
-                    [
-                        "arn:aws:apigateway:us-east-1:lambda:path/2015-03-31/functions/",
-                        {
-                            "Fn::GetAtt": [
-                                "ApiCLient",
-                                "Outputs.registroArchivosArn"
-                            ]
-                        },
-                        "/invocations"
-                    ]
-                ]
-            },
-            "credentials": {
-                "Fn::Join": [
-                    "",
-                    [
-                        "arn:aws:iam::",
-                        {
-                            "Ref": "AWS::AccountId"
-                        },
-                        ":role/RolApiGetewayInvoke"
-                    ]
-                ]
-            },
-            "responses": {
-                "default": {
-                    "statusCode": "200",
-                    "responseParameters": {
-                        "method.response.header.Access-Control-Allow-Methods": "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'",
-                        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,authorizationtoken,usertype,Userid,Client,user,Solicitud'",
-                        "method.response.header.Access-Control-Allow-Origin": "'*'"
-                    }
-                }
-            },
-            "passthroughBehavior": "when_no_match",
-            "httpMethod": "POST",
-            "contentHandling": "CONVERT_TO_TEXT",
-            "type": "aws_proxy"
-        }
-    },
-    "options": {
-        "consumes": [
-            "application/json"
-        ],
-        "produces": [
-            "application/json"
-        ],
-        "responses": {
-            "200": {
-                "description": "200 response",
-                "schema": {
-                    "$ref": "#/definitions/Empty"
-                },
-                "headers": {
-                    "Access-Control-Allow-Origin": {
-                        "type": "string"
-                    },
-                    "Access-Control-Allow-Methods": {
-                        "type": "string"
-                    },
-                    "Access-Control-Allow-Headers": {
-                        "type": "string"
-                    }
-                }
-            }
-        },
-        "x-amazon-apigateway-integration": {
-            "responses": {
-                "default": {
-                    "statusCode": "200",
-                    "responseParameters": {
-                        "method.response.header.Access-Control-Allow-Methods": "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'",
-                        "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Amz-Date,X-Api-Key,X-Amz-Security-Token,authorizationtoken,usertype,Userid,Client,user,Solicitud'",
-                        "method.response.header.Access-Control-Allow-Origin": "'*'"
-                    }
-                }
-            },
-            "passthroughBehavior": "when_no_match",
-            "requestTemplates": {
-                "application/json": "{\"statusCode\": 200}"
-            },
-            "type": "mock"
-        }
-    }
+template_properties_method_default = {
+    "role": "",
 }
 
 new_lambda_template = {
@@ -274,3 +143,62 @@ def lambda_handler(event, context):
         return result, 200
 
 '''
+
+
+HEADERS = 'Content-Type,' \
+          'Authorization,' \
+          'X-Amz-Date,X-Api-Key,' \
+          'X-Amz-Security-Token,' \
+          'authorizationtoken,' \
+          'usertype,' \
+          'Userid,' \
+          'Client,' \
+          'user,' \
+          'Solicitud'
+
+VERBS = 'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'
+
+options = {
+    "consumes": [
+        "application/json"
+    ],
+    "produces": [
+        "application/json"
+    ],
+    "responses": {
+        "200": {
+            "description": "200 response",
+            "schema": {
+                "$ref": "#/definitions/Empty"
+            },
+            "headers": {
+                "Access-Control-Allow-Origin": {
+                    "type": "string"
+                },
+                "Access-Control-Allow-Methods": {
+                    "type": "string"
+                },
+                "Access-Control-Allow-Headers": {
+                    "type": "string"
+                }
+            }
+        }
+    },
+    "x-amazon-apigateway-integration": {
+        "responses": {
+            "default": {
+                "statusCode": "200",
+                "responseParameters": {
+                    "method.response.header.Access-Control-Allow-Methods": "'DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT'",
+                    "method.response.header.Access-Control-Allow-Headers": f"{HEADERS}",
+                    "method.response.header.Access-Control-Allow-Origin": "'*'"
+                }
+            }
+        },
+        "passthroughBehavior": "when_no_match",
+        "requestTemplates": {
+            "application/json": "{\"statusCode\": 200}"
+        },
+        "type": "mock"
+    }
+}

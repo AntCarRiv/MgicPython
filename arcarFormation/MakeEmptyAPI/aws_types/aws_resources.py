@@ -1,9 +1,9 @@
 #!/usr/bin/python3
 # -*- encoding:utf-8 -*-
+from dataclasses import dataclass
 from typing import List, Optional, Union, Dict, Any
 
 from . import meta_types as mt
-from dataclasses import dataclass
 
 
 @dataclass

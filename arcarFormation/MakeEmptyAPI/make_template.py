@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from copy import deepcopy
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Union
 
 from aws_types import aws_resources
 from meta import templates as t
@@ -54,7 +54,7 @@ def group_by_template(all_lambdas: Dict[str, Any]) -> Dict[str, List[Any]]:
 
 def make_dir_lambda(path):
     try:
-        LOGGER.info(f'Try make dir {path}')
+        LOGGER.debug(f'Try make dir {path}')
         os.mkdir(path)
     except FileNotFoundError:
         os.makedirs(path)
@@ -70,7 +70,28 @@ def validation_name(name: str) -> Optional[str]:
         return f'./{name}'
 
 
-def new_lambda(name: str, template: str = None, path: str = None) -> bool:
+def add_method(method: str, template_api: dict, api_path: str) -> Optional[Union[dict, bool]]:
+    if method and not hasattr(Methods, method):
+        return False
+    else:
+        template_api[api_path][method] = getattr(Methods, method)()
+    return template_api
+
+
+def add_api_config(api_path: str, api_methods: (str, list, tuple)) -> dict:
+    template_api = {api_path: {}}
+    if isinstance(api_methods, (list, tuple)):
+        for method in api_methods:
+            add_method(method, template_api, api_path)
+    elif isinstance(api_methods, str):
+        add_method(api_methods, template_api, api_path)
+    template_api[api_path]['options'] = Methods.options()
+
+    return template_api
+
+
+def new_lambda(name: str, template: str = None, path: str = None,
+               api_method: str = None, api_path: str = None, security_type: str = None) -> bool:
     try:
         name_system = name
         path_system = os.path.join(path.replace('/', os.sep), name.replace('/', os.sep))
@@ -89,7 +110,13 @@ def new_lambda(name: str, template: str = None, path: str = None) -> bool:
             lambda_template['template'] = template if template else lambda_template['template']
             lambda_template['function_config']["Code"] = name
             lambda_template['function_config']["FunctionName"] = lambda_name
-
+            if api_path:
+                lambda_template.setdefault('api_configuration', {})
+                lambda_template['api_configuration'].update({"path": api_path})
+            if api_method and api_path:
+                lambda_template['api_configuration'].update({"Method": api_method})
+            if security_type and api_path:
+                lambda_template['api_configuration'].update({"Security": security_type})
             with open(os.path.join(path_system, 'lambda_function.py'), 'w') as code_file:
                 code_file.write(t.CODE_LAMBDA_TEMPLATE.format(name_lambda=lambda_name))
             with open(os.path.join(path_system, 'configuration.json'), 'w') as conf_file:
@@ -117,7 +144,9 @@ def deploy(path):
                 f'The limit for templates is 200 resource but this template contain {template_length} resources')
         for dd in groups[template]:
             t_lambda = deepcopy(t.template_properties_lambda_default)
+            t_method = deepcopy(t.template_properties_method_default)
             t_lambda.update(dd.get('function_config'))
+            t_method.update(dd.get('api_configuration'))
             lp = aws_resources.LambdaProperties(**t_lambda)
             l = aws_resources.Lambda(Properties=lp)
             if template not in templates:
@@ -133,3 +162,159 @@ def deploy(path):
         print('saving', template)
         with open(os.path.join(path, template), 'w') as ff:
             ff.write(templates[template].to_json())
+
+
+class Methods:
+
+    @classmethod
+    def base_method(cls, security_type: str, role_api_invoke: str,
+                    region: str, template_name: str, resource_name: str) -> dict:
+        return {
+            "consumes": [
+                "application/json"
+            ],
+            "produces": [
+                "application/json"
+            ],
+            "responses": {
+                "200": {
+                    "description": "200 response",
+                    "schema": {
+                        "$ref": "#/definitions/Empty"
+                    },
+                    "headers": {
+                        "Access-Control-Allow-Origin": {
+                            "type": "string"
+                        },
+                        "Access-Control-Allow-Methods": {
+                            "type": "string"
+                        },
+                        "Access-Control-Allow-Headers": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "security": [
+                {
+                    security_type: []
+                },
+                {
+                    "api_key": []
+                }
+            ],
+            "x-amazon-apigateway-integration": {
+                "uri": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            f"arn:aws:apigateway:{region}:lambda:path/2015-03-31/functions/",
+                            {
+                                "Fn::GetAtt": [
+                                    template_name,
+                                    f"Outputs.{resource_name}Arn"
+                                ]
+                            },
+                            "/invocations"
+                        ]
+                    ]
+                },
+                "credentials": {
+                    "Fn::Join": [
+                        "",
+                        [
+                            "arn:aws:iam::",
+                            {
+                                "Ref": "AWS::AccountId"
+                            },
+                            f":role/{role_api_invoke}"
+                        ]
+                    ]
+                },
+                "responses": {
+                    "default": {
+                        "statusCode": "200",
+                        "responseParameters": {
+                            "method.response.header.Access-Control-Allow-Methods": f"{t.VERBS}",
+                            "method.response.header.Access-Control-Allow-Headers": f"{t.HEADERS}",
+                            "method.response.header.Access-Control-Allow-Origin": "'*'"
+                        }
+                    }
+                },
+                "passthroughBehavior": "when_no_templates",
+                "httpMethod": "POST",
+                "contentHandling": "CONVERT_TO_TEXT",
+                "type": "aws_proxy"
+            }
+        }
+
+    @classmethod
+    def post(cls, security_type, role_api_invoke, region, template_name, resource_name):
+        base = cls.base_method(security_type, role_api_invoke, region, template_name, resource_name)
+        base.update(dict(parameters=[{"in": "body",
+                                      "name": "Empty",
+                                      "required": False,
+                                      "schema": {
+                                          "$ref": "#/definitions/Empty"}
+                                      }
+                                     ])
+                    )
+        return base
+
+    @classmethod
+    def get(cls, security_type, role_api_invoke, region, template_name, resource_name):
+        base = cls.base_method(security_type, role_api_invoke, region, template_name, resource_name)
+        base.update(dict(parameters=[{"in": "query",
+                                      "required": False,
+                                      "type": "string"
+                                      }
+                                     ])
+                    )
+        return base
+
+    @classmethod
+    def options(cls):
+        return {
+            "consumes": [
+                "application/json"
+            ],
+            "produces": [
+                "application/json"
+            ],
+            "responses": {
+                "200": {
+                    "description": "200 response",
+                    "schema": {
+                        "$ref": "#/definitions/Empty"
+                    },
+                    "headers": {
+                        "Access-Control-Allow-Origin": {
+                            "type": "string"
+                        },
+                        "Access-Control-Allow-Methods": {
+                            "type": "string"
+                        },
+                        "Access-Control-Allow-Headers": {
+                            "type": "string"
+                        }
+                    }
+                }
+            },
+            "x-amazon-apigateway-integration": {
+                "responses": {
+                    "default": {
+                        "statusCode": "200",
+                        "responseParameters": {
+                            "method.response.header.Access-Control-Allow-Methods": f"{t.VERBS}",
+                            "method.response.header.Access-Control-Allow-Headers": f"{t.HEADERS}",
+                            "method.response.header.Access-Control-Allow-Origin": "'*'"
+                        }
+                    }
+                },
+                "passthroughBehavior": "when_no_match",
+                "requestTemplates": {
+                    "application/json": "{\"statusCode\": 200}"
+                },
+                "type": "mock"
+            }
+        }
