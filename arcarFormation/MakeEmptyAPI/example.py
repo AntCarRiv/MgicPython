@@ -44,10 +44,12 @@ class Config:
         self.valid_extention_template = ['.json', '.yaml', '.yml', 'template']
         self.__template_default = 'template_default'
         self.__project_path = 'project_path'
+        self.__security_default = 'api_security'
         self.__profile_default = 'DEFAULT'
         self.__configuration_initial = {
             self.__template_default: {'method': self.set_template_default, 'message': 'template default: '},
-            self.__project_path: {'method': self.set_path, 'message': 'Work path: '}}
+            self.__project_path: {'method': self.set_path, 'message': 'Work path: '},
+            self.__security_default: {'method': self.add_security, 'message': 'Api Security: '}}
         if not os.path.exists(self.__path_config):
             print('Debe configurar los siguientes parametros para poder iniciar.')
             self.initial_configuration()
@@ -111,6 +113,8 @@ class Config:
         if not os.path.exists(path):
             return f'El path "{path}" no existe en el sistema'
         else:
+            if not self.config.has_section(profile) and profile != 'DEFAULT':
+                return f'El perfil {profile} aun no esta definido, primero intente config --add-profile {profile}'
             self.config.set(profile, self.__project_path, path)
             try:
                 self.save_config()
@@ -120,6 +124,40 @@ class Config:
                 return None
             else:
                 return f'work path: "{path}" saved'
+
+    def add_security(self, profile, security_name):
+        if not self.config.has_section(profile) and profile != 'DEFAULT':
+            return f'El perfil {profile} aun no esta definido, primero intente config --add-profile {profile}'
+        else:
+            try:
+                if self.config.has_option(profile, self.__security_default):
+                    data = self.config.get(profile, self.__security_default)
+                    data = data.split(',')
+                    data.append(security_name)
+                else:
+                    data = [security_name]
+
+                data = ','.join(data)
+                self.config.set(profile, self.__security_default, data)
+                self.save_config()
+            except Exception as details:
+                print(details)
+                LOGGER.error(details)
+                LOGGER.error(traceback.format_exc())
+                return None
+            else:
+                return f'Nombre {security_name} como elemento de seguridad guardado '
+
+    def add_new_profile(self, name):
+        try:
+            self.config.add_section(name)
+            self.save_config()
+        except Exception as details:
+            LOGGER.error(details)
+            LOGGER.error(traceback.format_exc())
+            return None
+        else:
+            return f'El perfil {name} se guardo correctamente'
 
     def set_template_default(self, profile, name_template):
         file_split = os.path.splitext(name_template)
@@ -192,6 +230,8 @@ The most commonly used BontuCLI commands are:
         getattr(self, functions.get(args.command, args.command))()
 
     def new_lambda(self):
+        # TODO añadir metodo para hacer seguridad dinamidca
+        # TODO testear creacion de lambdas con api
         parser = default_parser()
         parser.add_argument("-n", "--name", type=str,
                             help="Nombre que recibe la lambda")
@@ -253,6 +293,7 @@ The most commonly used BontuCLI commands are:
         exit(0)
 
     def deploy(self):
+        # TODO hacer test completos para deploy
         parser = default_parser()
         args = get_args(parser)
         path = self.config_data.get_work_path(args.profile)
@@ -268,12 +309,17 @@ The most commonly used BontuCLI commands are:
                             help="Imprime la informacion de configuracion para un perfil especificado")
         parser.add_argument("--show-all", action="store_true",
                             help="Imprime la informacion de configuracion")
+        parser.add_argument("--show-profiles", action="store_true",
+                            help="Imprime el nombre de todos los perfiles disponibles")
+
         parser.add_argument("--valid-templates", action="store_true",
                             help="Imprime los nombres de los templates validos para añadir lambdas")
         parser.add_argument("--add-template", type=str,
                             help="Añade un nombre de template valido")
         parser.add_argument("--add-path", type=str,
                             help="Añade o actualiza la ruta del directorio del projecto")
+        parser.add_argument("--add-profile", type=str,
+                            help="Añade un nuevo perfi de configuraciones")
 
         args = get_args(parser)
         if args.show:
@@ -283,13 +329,19 @@ The most commonly used BontuCLI commands are:
             print(self.config_data.get_all_config())
             exit(0)
         if args.add_path:
-            self.config_data.set_path(args.profile, args.add_path)
+            print(self.config_data.set_path(args.profile, args.add_path))
             exit(0)
         if args.valid_templates:
             print(self.config_data.get_valid_templates(args.profile))
             exit(0)
         if args.add_template:
             print(self.config_data.add_valid_template(args.profile, args.add_template))
+            exit(0)
+        if args.show_profiles:
+            print(self.config_data.get_profiles())
+            exit(0)
+        if args.add_profile:
+            print(self.config_data.add_new_profile(args.add_profile))
             exit(0)
 
 
