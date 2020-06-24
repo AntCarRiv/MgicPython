@@ -2,3 +2,4 @@
 # -*- encoding:utf-8 -*-
 
 from . import aws_types
+from .bontuCLI import *
