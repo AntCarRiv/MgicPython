@@ -37,7 +37,8 @@ class Properties:
         for key, value in asdict(self).items():
             if isinstance(value, Enum):
                 value = value.value
-            d[key] = value
+            if key not in ['name_resource', 'output']:
+                d[key] = value
         d = self.drop_nulls(d)
         return d
 
@@ -76,8 +77,12 @@ class S3ObjectVersionType(StrictStr):
     max_length = 1023
 
 
-class Role(StrictStr):
+class RoleArn(StrictStr):
     regex = re.compile(r'arn:(aws[a-zA-Z-]*)?:iam::\d{12}:role/?[a-zA-Z_0-9+=,.@\-_/]+')
+
+
+class Role(StrictStr):
+    regex = re.compile(r'[a-zA-Z_0-9+=,.@\-_/]+')
 
 
 class Description(StrictStr):

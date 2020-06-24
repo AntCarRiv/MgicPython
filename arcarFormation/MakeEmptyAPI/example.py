@@ -11,6 +11,7 @@ import traceback
 
 from make_template import deploy
 from make_template import new_lambda
+from pydantic.typing import List, Any
 
 LOGGER = logging.getLogger('BontuCLI')
 LOGGER.setLevel(logging.INFO)
@@ -34,6 +35,18 @@ def get_args(parser):
     return parser.parse_args(args)
 
 
+def beauty_print(head: List[str], values: List[List[Any]], sep: int = 13):
+    formato = ('|{:^' + f'{sep}' + '}') * len(head)
+    headers = formato.format(*head)
+    arround = '{}|'
+    print(arround.format(headers))
+    print('=' * (len(headers) + 1))
+    for e in values:
+        row = formato.format(*e)
+        print(arround.format(row))
+        print('-' * (len(row) + 1))
+
+
 class Config:
     def __init__(self, name_config='bontuTest.ini'):
         self.logger = logging.getLogger('Config')
@@ -47,12 +60,13 @@ class Config:
         self.__security_default = 'api_security'
         self.__profile_default = 'DEFAULT'
         self.__configuration_initial = {
-            self.__template_default: {'method': self.set_template_default, 'message': 'template default: '},
+            # self.__template_default: {'method': self.set_template_default, 'message': 'template default: '},
             self.__project_path: {'method': self.set_path, 'message': 'Work path: '},
             self.__security_default: {'method': self.add_security, 'message': 'Api Security: '}}
         if not os.path.exists(self.__path_config):
             print('Debe configurar los siguientes parametros para poder iniciar.')
             self.initial_configuration()
+        self.initial_files()
 
     def initial_configuration(self):
         try:
@@ -72,6 +86,11 @@ class Config:
                     self.initial_configuration()
                     break
 
+    def initial_files(self):
+        path = self.get_work_path(self.__profile_default)
+        with open(os.path.join(path, 'template_properties_default.json'), 'w') as ff:
+            ff.write(json.dumps({'lambda': {}, 'api': {}}, indent=4))
+
     def get_profiles(self):
         return self.config.sections()
 
@@ -87,13 +106,8 @@ class Config:
         return str('\n').join([f'{e[0]} {json.dumps(dict(e[1]), indent=4)}' for e in self.config.items() if dict(e[1])])
 
     def get_valid_templates(self, profile):
-        if 'templates' in self.config[profile]:
-            tplt = self.config[profile]['templates']
-            tplt = tplt.split(',')
-            tplt.sort()
-            return tplt
-        else:
-            return 'No hay templates definidos para este perfil.'
+        templates = os.listdir(os.path.join(self.get_work_path(profile), 'templates'))
+        return templates if templates else 'No hay templates definidos.'
 
     def get_template_default(self, profile):
         try:
@@ -124,6 +138,16 @@ class Config:
                 return None
             else:
                 return f'work path: "{path}" saved'
+
+    def get_security(self, profile):
+        try:
+            security = self.config.get(profile, self.__security_default)
+            security = security.split(',')
+        except Exception as details:
+            LOGGER.error(f'Error to try get the security information\nDetails: {details}')
+            return None
+        else:
+            return security
 
     def add_security(self, profile, security_name):
         if not self.config.has_section(profile) and profile != 'DEFAULT':
@@ -230,7 +254,6 @@ The most commonly used BontuCLI commands are:
         getattr(self, functions.get(args.command, args.command))()
 
     def new_lambda(self):
-        # TODO añadir metodo para hacer seguridad dinamidca
         # TODO testear creacion de lambdas con api
         parser = default_parser()
         parser.add_argument("-n", "--name", type=str,
@@ -244,7 +267,7 @@ The most commonly used BontuCLI commands are:
                             help="Nombre del endpoint para api Gateway")
         parser.add_argument("-m", "--metodo", type=str, choices=['get', 'post', 'patch', 'put'],
                             help="metodo con el que se invoca la lambda a travez de api gateway")
-        parser.add_argument("-s", "--security-type", type=str, choices=['auth_admin', 'auth_users', 'auth_both'],
+        parser.add_argument("-s", "--security-type", type=str,
                             help="Nombre del autorizador que utilizara la lambda")
 
         args = get_args(parser)
@@ -254,7 +277,9 @@ The most commonly used BontuCLI commands are:
             print('Debe definir almenos el nombre de la lambda')
             exit(1)
         if args.template and args.template not in self.config_data.get_valid_templates(args.profile):
-            print(f'El template no es valido.')
+            print(
+                f'El template no es valido, templates validos son: '
+                f'{self.config_data.get_valid_templates(args.profile)}')
             exit(0)
         if args.path and not os.path.exists(args.path):
             print('El path indicado no existe.')
@@ -271,7 +296,8 @@ The most commonly used BontuCLI commands are:
         if args.api_path and not next(
                 re.finditer(regex_endpoint, args.api_path, re.MULTILINE)).group() == args.api_path:
             print(
-                f"El nombre {args.api_path} no es un valor valido para el endpoint de la lambda.")
+                f"El nombre {args.api_path} no es un valor valido para el endpoint de la lambda. Los valores deben "
+                f"tener la forma /endpoint or /enpoint/example")
             exit(1)
 
         # Get all values from args
@@ -283,24 +309,40 @@ The most commonly used BontuCLI commands are:
             'No se guardara el metodo en la configuracion pues no se definio un endpoint')
         security_type = args.security_type if endpoint else print(
             'No se guardara el security_type en la configuracion pues no se definio un endpoint')
-
+        if security_type:
+            if security_type not in self.config_data.get_security(args.profile):
+                print(
+                    f'El tipo de seguridad no esta definido con un tipo de seguridad valido, valoeres permitidos '
+                    f'son: {self.config_data.get_security(args.profile)}')
+                exit(1)
         # Las validation for make resource
         if not template:
             print('No se definio un template para este recurso')
             exit(1)
 
-        new_lambda(name, template, path, verb, endpoint, security_type)
+        if new_lambda(name, template, path, verb, endpoint, security_type):
+            print(f'Se creo correrctamente la lambda con el nombre: {name}')
         exit(0)
 
     def deploy(self):
-        # TODO hacer test completos para deploy
+        def read_config(path_file, file_name):
+            with open(os.path.join(path_file, file_name), 'r') as config_object:
+                try:
+                    data = json.loads(config_object.read())
+                except Exception as details:
+                    LOGGER.error(details)
+                else:
+                    return data
         parser = default_parser()
         args = get_args(parser)
         path = self.config_data.get_work_path(args.profile)
         if not path:
             print(f'Debe definir un path de trabajo para el perfil: {args.profile}')
             exit(1)
-        deploy(path)
+        lambda_basic_config = read_config(path, 'template_properties_default.json')
+        if not lambda_basic_config:
+            LOGGER.warning('No se encontro una configuracion default para la lambda.')
+        deploy(path, lambda_basic_config)
         exit(0)
 
     def config(self):
@@ -311,15 +353,19 @@ The most commonly used BontuCLI commands are:
                             help="Imprime la informacion de configuracion")
         parser.add_argument("--show-profiles", action="store_true",
                             help="Imprime el nombre de todos los perfiles disponibles")
+        parser.add_argument('--show-security', action='store_true',
+                            help='Imprime los nombres del tipo de seguridad para api gateway')
 
         parser.add_argument("--valid-templates", action="store_true",
                             help="Imprime los nombres de los templates validos para añadir lambdas")
-        parser.add_argument("--add-template", type=str,
-                            help="Añade un nombre de template valido")
+        # parser.add_argument("--add-template", type=str,
+        #                     help="Añade un nombre de template valido")
         parser.add_argument("--add-path", type=str,
                             help="Añade o actualiza la ruta del directorio del projecto")
         parser.add_argument("--add-profile", type=str,
                             help="Añade un nuevo perfi de configuraciones")
+        parser.add_argument('--add-security', type=str,
+                            help='Añade el nombre de un elemento de seguridad para api gaateway')
 
         args = get_args(parser)
         if args.show:
@@ -342,6 +388,12 @@ The most commonly used BontuCLI commands are:
             exit(0)
         if args.add_profile:
             print(self.config_data.add_new_profile(args.add_profile))
+            exit(0)
+        if args.show_security:
+            print(self.config_data.get_security(args.profile))
+            exit(0)
+        if args.add_security:
+            self.config_data.add_security(args.profile, args.add_security)
             exit(0)
 
 

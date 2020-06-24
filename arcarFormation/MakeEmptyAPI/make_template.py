@@ -130,11 +130,21 @@ def new_lambda(name: str, template: str = None, path: str = None,
     return True
 
 
-def deploy(path):
+def read_template(template):
+    with open(template, 'r') as ff:
+        data = json.loads(ff.read())
+    try:
+        template = aws_resources.Template(**data)
+    except Exception as details:
+        LOGGER.error(details)
+        raise ValueError("Template not valid")
+    else:
+        return template
+
+
+def deploy(path, properties_default):
     all_config_lambdas = get_all_lambdas(path)
     groups = group_by_template(all_config_lambdas)
-    t_template = deepcopy(t.parameter_default)
-
     templates = {}
     LOGGER.info(f'Will be created {len(groups)} templates')
     for template in groups:
@@ -142,24 +152,41 @@ def deploy(path):
         if template_length > 200:
             LOGGER.error(
                 f'The limit for templates is 200 resource but this template contain {template_length} resources')
-        for dd in groups[template]:
-            t_lambda = deepcopy(t.template_properties_lambda_default)
+        for lmd in groups[template]:
+            t_lambda = deepcopy(properties_default.get('lambda'))
             t_method = deepcopy(t.template_properties_method_default)
-            t_lambda.update(dd.get('function_config'))
-            t_method.update(dd.get('api_configuration'))
-            lp = aws_resources.LambdaProperties(**t_lambda)
-            l = aws_resources.Lambda(Properties=lp)
-            if template not in templates:
-                templates[template]: aws_resources.Template = aws_resources.Template(Parameters=t_template,
-                                                                                     Resources={l.name_resource: l},
-                                                                                     Outputs={})
+            if t_lambda is None or t_method is None:
+                raise ValueError('Not found lambda or api data')
+            resources = lmd.get('Resources', [])
+            if resources:
+                for r in resources:
+                    t_lambda.update(lmd.get('function_config'))
+                    t_lambda.update(resources[r])
+                    t_method.update(lmd.get('api_configuration'))
+                    t_lambda['FunctionName'] = r
+                    lp = aws_resources.LambdaProperties(**t_lambda)
+                    lmd_instance = aws_resources.Lambda(Properties=lp)
+                    templates.setdefault(template, read_template(os.path.join(path, template)))
+                    if lmd_instance.name_resource in templates[template].Resources:
+                        LOGGER.warning('Resource will be replace by other with the same name')
+                    templates[template].Resources[lmd_instance.name_resource] = lmd_instance
+                    templates[template].Outputs[lmd_instance.output_resource] = {"Description": "",
+                                                                        "Value": {
+                                                                            "Ref": lmd_instance.name_resource
+                                                                        }
+                                                                        }
             else:
-                if l.name_resource in templates[template].Resources:
+                t_lambda.update(lmd.get('function_config'))
+                t_method.update(lmd.get('api_configuration'))
+                lp = aws_resources.LambdaProperties(**t_lambda)
+                lmd_instance = aws_resources.Lambda(Properties=lp)
+                templates.setdefault(template, read_template(os.path.join(path, template)))
+                if lmd_instance.name_resource in templates[template].Resources:
                     LOGGER.warning('Resource will be replace by other with the same name')
-                templates[template].Resources[l.name_resource] = l
+                templates[template].Resources[lmd_instance.name_resource] = lmd_instance
 
     for template in templates:
-        print('saving', template)
+        print('saving template ---> ', template)
         with open(os.path.join(path, template), 'w') as ff:
             ff.write(templates[template].to_json())
 
@@ -318,3 +345,19 @@ class Methods:
                 "type": "mock"
             }
         }
+
+
+if __name__ == '__main__':
+    def read_config(path_file, file_name):
+        with open(os.path.join(path_file, file_name), 'r') as config_object:
+            try:
+                data = json.loads(config_object.read())
+            except Exception as details:
+                LOGGER.error(details)
+            else:
+                return data
+
+
+    lambda_basic_config = read_config('/home/carlosa/PycharmProjects/MgicPython/pruebas_deploy_carlos',
+                                      'template_properties_default.json')
+    deploy('/home/carlosa/PycharmProjects/MgicPython/pruebas_deploy_carlos', lambda_basic_config)
