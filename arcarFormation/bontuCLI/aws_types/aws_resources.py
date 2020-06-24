@@ -1,11 +1,12 @@
 #!/usr/bin/python3
 # -*- encoding:utf-8 -*-
+import json
 import re
 from dataclasses import field
 from typing import List, Optional, Union, Dict, Any
 
 import boto3
-from . import meta_types as mt
+import meta_types as mt
 from pydantic.dataclasses import dataclass
 
 
@@ -92,3 +93,38 @@ class Template(mt.Properties):
     Transform: Dict[str, Any] = field(default_factory=dict)
     Resources: Dict[str, Any] = field(default_factory=dict)
     Outputs: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class APITemplate(mt.Properties):
+    swagger: str = None
+    info: Dict[str, Any] = None
+    host: str = None
+    basePath: str = None
+    schemes: List[str] = None
+    paths: Dict[str, Any] = None
+    securityDefinitions: Dict[str, Any] = None
+    definitions: Dict[str, Any] = None
+    x_amazon_apigateway_gateway_responses: Dict[str, Any] = None
+    x_amazon_apigateway_binary_media_types: List[str] = None
+    x_amazon_apigateway_documentation: Dict[str, Any] = None
+
+    @classmethod
+    def special_instance(cls, template):
+        template['x_amazon_apigateway_gateway_responses'] = template['x-amazon-apigateway-gateway-responses']
+        del template['x-amazon-apigateway-gateway-responses']
+        template['x_amazon_apigateway_binary_media_types'] = template['x-amazon-apigateway-binary-media-types']
+        del template['x-amazon-apigateway-binary-media-types']
+        template['x_amazon_apigateway_documentation'] = template['x-amazon-apigateway-documentation']
+        del template['x-amazon-apigateway-documentation']
+        return cls(**template)
+
+    def to_json(self):
+        template = self.to_dict()
+        template['x-amazon-apigateway-gateway-responses'] = template['x_amazon_apigateway_gateway_responses']
+        del template['x_amazon_apigateway_gateway_responses']
+        template['x-amazon-apigateway-binary-media-types'] = template['x_amazon_apigateway_binary_media_types']
+        del template['x_amazon_apigateway_binary_media_types']
+        template['x-amazon-apigateway-documentation'] = template['x_amazon_apigateway_documentation']
+        del template['x_amazon_apigateway_documentation']
+        return json.dumps(template, indent=4)
