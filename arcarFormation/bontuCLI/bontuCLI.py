@@ -58,11 +58,13 @@ class Config:
         self.__template_default = 'template_default'
         self.__project_path = 'project_path'
         self.__security_default = 'api_security'
+        self.__api_template_default = 'api_template_default'
         self.__profile_default = 'DEFAULT'
         self.__configuration_initial = {
             # self.__template_default: {'method': self.set_template_default, 'message': 'template default: '},
             self.__project_path: {'method': self.set_path, 'message': 'Work path: '},
-            self.__security_default: {'method': self.add_security, 'message': 'Api Security: '}}
+            self.__security_default: {'method': self.add_security, 'message': 'Api Security: '},
+            self.__api_template_default: {'method': self.add_api_template, 'message': "Api template"}}
         if not os.path.exists(self.__path_config):
             print('Debe configurar los siguientes parametros para poder iniciar.')
             self.initial_configuration()
@@ -88,8 +90,10 @@ class Config:
 
     def initial_files(self):
         path = self.get_work_path(self.__profile_default)
-        with open(os.path.join(path, 'template_properties_default.json'), 'w') as ff:
-            ff.write(json.dumps({'lambda': {}, 'api': {}}, indent=4))
+        path_file = os.path.join(path, 'template_properties_default.json')
+        if not os.path.exists(path_file):
+            with open(path_file, 'w') as ff:
+                ff.write(json.dumps({'lambda': {}, 'api': {}}, indent=4))
 
     def get_profiles(self):
         return self.config.sections()
@@ -106,7 +110,9 @@ class Config:
         return str('\n').join([f'{e[0]} {json.dumps(dict(e[1]), indent=4)}' for e in self.config.items() if dict(e[1])])
 
     def get_valid_templates(self, profile):
-        templates = os.listdir(os.path.join(self.get_work_path(profile), 'templates'))
+        templates = self.config[profile]['templates']
+        templates = templates.split(',')
+        # templates = os.listdir(os.path.join(self.get_work_path(profile), 'templates'))
         return templates if templates else 'No hay templates definidos.'
 
     def get_template_default(self, profile):
@@ -115,6 +121,13 @@ class Config:
         except configparser.NoOptionError:
             return None
         return template_default
+
+    def get_api_template(self, profile):
+        try:
+            api_template = self.config.get(profile, self.__api_template_default)
+        except configparser.NoOptionError:
+            return None
+        return api_template
 
     def get_work_path(self, profile):
         try:
@@ -183,6 +196,17 @@ class Config:
         else:
             return f'El perfil {name} se guardo correctamente'
 
+    def add_api_template(self, profile, name_template):
+        file_split = os.path.splitext(name_template)
+        if file_split[-1] in self.valid_extention_template and len(file_split) == 2:
+            self.config.set(profile, self.__api_template_default, name_template)
+            if self.save_config():
+                return f'template {name_template} guardado como api_template'
+            else:
+                return 'Error al guardar el api template'
+        else:
+            return f'La extencion del arhivo deberia ser alguna de las siguientes: {self.valid_extention_template}'
+
     def set_template_default(self, profile, name_template):
         file_split = os.path.splitext(name_template)
         if file_split[-1] in self.valid_extention_template and len(file_split) == 2:
@@ -196,28 +220,28 @@ class Config:
 
     def add_valid_template(self, profile, template_name):
         file_split = os.path.splitext(template_name)
-        if self.config.has_section(profile):
-            if 'templates' in self.config[profile]:
-                tplt = self.config[profile]['templates']
-                tplt = tplt.split(',')
-                if template_name not in tplt and file_split[-1] in self.valid_extention_template and len(
-                        file_split) == 2:
-                    tplt.append(template_name)
-                    self.config[profile]['templates'] = str(',').join(tplt)
-                elif file_split[-1] not in self.valid_extention_template or len(file_split) != 2:
-                    return "Nombre de template no valido"
-                else:
-                    return "Ya existe este template en la lista"
+        # if self.config.has_section(profile):
+        if 'templates' in self.config[profile]:
+            tplt = self.config[profile]['templates']
+            tplt = tplt.split(',')
+            if template_name not in tplt and file_split[-1] in self.valid_extention_template and len(
+                    file_split) == 2:
+                tplt.append(template_name)
+                self.config[profile]['templates'] = str(',').join(tplt)
+            elif file_split[-1] not in self.valid_extention_template or len(file_split) != 2:
+                return "Nombre de template no valido"
             else:
-                if file_split[-1] in self.valid_extention_template and len(file_split) == 2:
-                    self.config[profile]['templates'] = template_name
-                else:
-                    return 'Nombre del template no valido'
+                return "Ya existe este template en la lista"
+        else:
+            if file_split[-1] in self.valid_extention_template and len(file_split) == 2:
+                self.config[profile]['templates'] = template_name
+            else:
+                return 'Nombre del template no valido'
 
-            if self.save_config():
-                return 'Se guardo correctamente el nuevo template'
-            else:
-                return 'Error al intentar guardar el nuevo template'
+        if self.save_config():
+            return 'Se guardo correctamente el nuevo template'
+        else:
+            return 'Error al intentar guardar el nuevo template'
 
     def save_config(self):
         try:
@@ -269,6 +293,8 @@ The most commonly used BontuCLI commands are:
                             help="metodo con el que se invoca la lambda a travez de api gateway")
         parser.add_argument("-s", "--security-type", type=str,
                             help="Nombre del autorizador que utilizara la lambda")
+        parser.add_argument("-a", "--alias-template", type=str,
+                            help="Nombre del id logico donde se contrulle el recurso.")
 
         args = get_args(parser)
 
@@ -291,7 +317,7 @@ The most commonly used BontuCLI commands are:
         if not next(re.finditer(regex_name, args.name, re.MULTILINE)).group() == args.name:
             print(
                 f"El nombre {args.name} no es un valor valido para el nombre de la lambda. "
-                f"Asegurate de solo agregar Caracteres")
+                f"Asegurate de solo agregar caracteres alfabeticos")
             exit(1)
         if args.api_path and not next(
                 re.finditer(regex_endpoint, args.api_path, re.MULTILINE)).group() == args.api_path:
@@ -299,8 +325,11 @@ The most commonly used BontuCLI commands are:
                 f"El nombre {args.api_path} no es un valor valido para el endpoint de la lambda. Los valores deben "
                 f"tener la forma /endpoint or /enpoint/example")
             exit(1)
-
+        if args.api_path and not args.alias_template:
+            print('El alias template es obligatorio si se pasa un enpoint')
+            exit(1)
         # Get all values from args
+        alias_template = args.alias_template
         template = args.template if args.template else self.config_data.get_template_default(args.profile)
         path = args.path if args.path else self.config_data.get_work_path(args.profile)
         name = args.name
@@ -315,12 +344,13 @@ The most commonly used BontuCLI commands are:
                     f'El tipo de seguridad no esta definido con un tipo de seguridad valido, valoeres permitidos '
                     f'son: {self.config_data.get_security(args.profile)}')
                 exit(1)
+
         # Las validation for make resource
         if not template:
             print('No se definio un template para este recurso')
             exit(1)
 
-        if new_lambda(name, template, path, verb, endpoint, security_type):
+        if new_lambda(name, template, path, verb, endpoint, security_type, alias_template):
             print(f'Se creo correrctamente la lambda con el nombre: {name}')
         exit(0)
 
@@ -333,6 +363,7 @@ The most commonly used BontuCLI commands are:
                     LOGGER.error(details)
                 else:
                     return data
+
         parser = default_parser()
         args = get_args(parser)
         path = self.config_data.get_work_path(args.profile)
@@ -342,7 +373,11 @@ The most commonly used BontuCLI commands are:
         lambda_basic_config = read_config(path, 'template_properties_default.json')
         if not lambda_basic_config:
             LOGGER.warning('No se encontro una configuracion default para la lambda.')
-        deploy(path, lambda_basic_config)
+        api_template = read_config(path, self.config_data.get_api_template(args.profile))
+        if not api_template:
+            LOGGER.warning('Not found api-template')
+        deploy(path, lambda_basic_config, api_template,
+               os.path.join(path, self.config_data.get_api_template(args.profile)))
         exit(0)
 
     def config(self):
@@ -358,8 +393,8 @@ The most commonly used BontuCLI commands are:
 
         parser.add_argument("--valid-templates", action="store_true",
                             help="Imprime los nombres de los templates validos para añadir lambdas")
-        # parser.add_argument("--add-template", type=str,
-        #                     help="Añade un nombre de template valido")
+        parser.add_argument("--add-template", type=str,
+                            help="Añade un nombre de template valido")
         parser.add_argument("--add-path", type=str,
                             help="Añade o actualiza la ruta del directorio del projecto")
         parser.add_argument("--add-profile", type=str,
